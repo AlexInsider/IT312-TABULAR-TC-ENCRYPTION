@@ -1,42 +1,165 @@
 import java.util.Scanner;
 
-public class Main {
+public class App {
 	public static void main(String[] args) {
 		Scanner scanner = new Scanner(System.in);
 
-		System.out.println("=== Tabular TNC niccceee g ===");
-		System.out.print("Plain Text: ");
-		String pt = scanner.nextLine();
-
-		System.out.print("Auto Key: ");
-		int key = scanner.nextInt();
-		String keyString = Integer.toString(key);
-
-		int numCols = keyString.length();
-		System.out.println("Number of columns: " +numCols);
-
         /*
-            We used ternary operator (short hand of the IF ELSE statement) in getting the number of extra characters to be displayed at the table.
-            First we get the modulo of the length of the plain text and the number of columns, 
-            if the modulo is 0 then we do no calculation and assign 0 to the offsetCharLength variable, 
-            else we subtract the number of columns by the modulo of the length of the plain text and the number of columns. 
+            reads plaintext and a columnar transposition key, validates
+            input, computes table dimensions, then encrypts and decrypts to demonstrate the
+            Tabular Transposition Cipher. Repeats until the user quits.
         */
-		int offsetCharLength = (pt.length() % numCols) == 0 ? 0 : numCols - (pt.length() % numCols);
-		
-		// We then add the length of the plain text by the number of extra characters (offsetCharLength) and divide by the number of columns to get the number of rows. 
-		int numRows = (pt.length() + offsetCharLength) / numCols ;
-		System.out.println("Number of rows: " +numRows);
-		
-		// Calls the encrypt method passing the necessary variables (data) to do the encryption part. 
-		String encryptedText = encrypt(pt, keyString, numCols, numRows, offsetCharLength);
-		System.out.println("Encrypted Text: " +encryptedText +"\n");
+		try {
+			boolean runAgain = true;
+			while (runAgain) {
+				try {
+					System.out.println("=== Tabular TC ===");
+					System.out.print("Plain Text: ");
+					String pt = scanner.nextLine();
+					if (pt == null) {
+						pt = "";
+					}
 
-        // Calls the decrypt method passing the necessary variables (data) to do the decryption part. 
-		String decryptedText = decrypt(encryptedText, keyString, numCols, numRows, offsetCharLength);
-		System.out.println("Decrypted Text: " +decryptedText);
+					// Disallow numbers in plaintext, reprompt until valid
+					while (containsDigit(pt)) {
+						System.out.println("Error: Plaintext must not contain numbers (0-9).");
+						System.out.print("Plain Text: ");
+						pt = scanner.nextLine();
+						if (pt == null) {
+							pt = "";
+						}
+					}
+
+					System.out.print("Auto Key: ");
+					if (!scanner.hasNextInt()) {
+						System.out.println("Error: Key must be a positive integer composed of digits 1..9.");
+						scanner.nextLine(); // consume invalid input line
+						continue;
+					}
+					int key = scanner.nextInt();
+					if (key <= 0) {
+						System.out.println("Error: Key must be greater than 0.");
+						scanner.nextLine(); // consume newline after int
+						continue;
+					}
+					String keyString = Integer.toString(key);
+					// consume the remaining newline after nextInt
+					scanner.nextLine();
+					if (keyString.isEmpty()) {
+						System.out.println("Error: Key must not be empty.");
+						continue;
+					}
+					// Validate that key digits are within 1..n and form a permutation
+					int numCols = keyString.length();
+					if (!isValidKeyDigits(keyString)) {
+						System.out.println("Error: Key must contain digits 1..9 only, no zeros or letters.");
+						continue;
+					}
+					if (!isPermutationOfRange(keyString, numCols)) {
+						System.out.println("Error: Key must be a permutation of 1.." + numCols + ". Example for 3: 123, 132, 213, 231, 312, 321.");
+						continue;
+					}
+					System.out.println("Number of columns: " +numCols);
+
+					int offsetCharLength = (pt.length() % numCols) == 0 ? 0 : keyString.length() - (pt.length() % numCols);
+					if (offsetCharLength < 0) {
+						System.out.println("Error: Computed offset was negative, aborting.");
+						continue;
+					}
+					int numRows = (pt.length() + offsetCharLength) / numCols ;
+					System.out.println("Number of rows: " +numRows);
+					
+					String encryptedText = encrypt(pt, keyString, numCols, numRows, offsetCharLength);
+					System.out.println("Encrypted Text: " +encryptedText +"\n");
+
+					String decryptedText = decrypt(encryptedText, keyString, numCols, numRows, offsetCharLength);
+					if (offsetCharLength > decryptedText.length()) {
+						System.out.println("Error: Offset longer than decrypted text. Check key and input.");
+						continue;
+					}
+					System.out.println("Decrypted Text: " +decryptedText);
+				} catch (IndexOutOfBoundsException ex) {
+					System.out.println("Runtime error: Index out of bounds. Please verify key digits are within 1..n and unique.");
+				} catch (IllegalArgumentException ex) {
+					System.out.println("Invalid input: " + ex.getMessage());
+				} catch (Exception ex) {
+					System.out.println("Unexpected error: " + ex.getMessage());
+				}
+
+				System.out.print("Do you want to encrypt another text? (y/n): ");
+				String answer = scanner.nextLine().trim().toLowerCase();
+				runAgain = answer.startsWith("y");
+			}
+		} finally {
+			scanner.close();
+		}
 	}
 
-	public static String encrypt(String text, String keyString, int numCols, int numRows, int offsetCharLength) {
+	/**
+	 * Validates that every character in the key string is a digit between 1 and 9.
+	 *
+	 * @param keyString digits-only key text
+	 * @return true if all chars are in '1'..'9'; false otherwise
+	 */
+    private static boolean isValidKeyDigits(String keyString) {
+        for (int i = 0; i < keyString.length(); i++) {
+            char ch = keyString.charAt(i);
+            if (ch < '1' || ch > '9') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+	/**
+	 * Ensures the key is a permutation of 1..numCols (each digit appears exactly once
+	 * and every digit is within range).
+	 *
+	 * @param keyString digits-only key text
+	 * @param numCols   expected size of the permutation
+	 * @return true if keyString forms a valid permutation of 1..numCols
+	 */
+    private static boolean isPermutationOfRange(String keyString, int numCols) {
+        boolean[] seen = new boolean[numCols];
+        for (int i = 0; i < keyString.length(); i++) {
+            int digit = keyString.charAt(i) - '0';
+            if (digit < 1 || digit > numCols) {
+                return false;
+            }
+            if (seen[digit - 1]) {
+                return false;
+            }
+            seen[digit - 1] = true;
+        }
+        // verify all 1..numCols seen
+        for (int i = 0; i < numCols; i++) {
+            if (!seen[i]) return false;
+        }
+        return true;
+    }
+
+	/**
+	 * Returns true if the provided text contains any numeric digit.
+	 * Allows letters, spaces, and symbols, but rejects 0-9 anywhere in the text.
+	 */
+	private static boolean containsDigit(String text) {
+		if (text == null) return false;
+		for (int i = 0; i < text.length(); i++) {
+			if (Character.isDigit(text.charAt(i))) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/*
+	    Encrypts using Columnar/Tabular Transposition.
+        Pads plaintext with 'z' to fill the final row.
+        Fills a numRows x numCols table row-wise.
+        Reads columns in the order dictated by key digits (1-based) to produce ciphertext.
+        Also provides/prints the filled table for visualization.
+	*/ 
+    public static String encrypt(String text, String keyString, int numCols, int numRows, int offsetCharLength) {
 		// 2d array that will act as the table
 		char td[][] = new char[numRows][numCols];
 		
@@ -89,7 +212,14 @@ public class Main {
         // Return the encrypted text to the caller
 		return encryptedText;
 	}
-
+	
+	/*
+        Decrypts a Columnar/Tabular Transposition ciphertext.
+	    Splits ciphertext into numCols groups of length numRows (visual guide printed).
+	    Places each group into the column indicated by the key digit (1-based) top-to-bottom.
+	    Reads table row-wise to reconstruct plaintext, then removes padding.
+        Also prints intermediate boxes and the reconstructed table.
+	 */
 	public static String decrypt(String text, String keyString, int numCols, int numRows, int offsetCharLength) {
 		// Declare a variable that acts as a cursor (just like from the encryption method)
 		int ptIndex = 0;
@@ -163,6 +293,7 @@ public class Main {
 		return decryptedText;
 	}
 	
+    //Prints a table visualization with row and column indicators for the provided 2D character array.
 	public static void displayTable(char td[][], int numCols, int numRows){
 	    // Displays the number of columns
 	    columnIndicator(numCols);
@@ -191,6 +322,7 @@ public class Main {
 		printHLineTable(numCols); // Displays a horizontal line of the table (bottom)
 	}
 
+    // Prints the header row that labels columns from 0..numCols.
 	public static void columnIndicator(int numCols) {
 		// Prints a horizontal line based from the number of columns
 		printHLineTable(numCols);
@@ -202,6 +334,7 @@ public class Main {
 		System.out.println("|"); // Account for the last closing barrier ( | )
 	}
 
+    // Prints a horizontal separator line sized for a table with the given columns.
 	public static void printHLineTable(int numCols) {
 		System.out.print("-"); // Account for the first barrier ( | )
 		
@@ -212,6 +345,7 @@ public class Main {
 		System.out.println(); // Moves to the next line
 	}
 	
+	// Prints a horizontal separator for the boxed ciphertext groups view used during decryption, sized by columns and rows.
 	public static void printHLineBox(int numCols, int numRows) {
 		// Prints a horizontal line for the grouped text
 		for(int i = 0; i < numCols; i++){
@@ -223,6 +357,12 @@ public class Main {
 		}
 		System.out.println(); // Moves to the next line
 	}
+	
+	/*
+	    Prints indicators above the boxed ciphertext groups. When isOffset is false,
+	    prints simple 1..numCols; when true, prints the actual key digits over each
+	    group to show mapping during decryption.
+    */
 	
 	public static void printBoxIndicator(int numCols, int numRows, String keyString, boolean willSubstitute){
 	    // Displays the necessary indicators for the grouped text
